@@ -318,7 +318,7 @@ Symptom: Query expansion always fails / returns garbage
 
 Symptom: Vector search returns no results but BM25 works
   → Missing embeddings. Watcher indexes but does NOT embed.
-  → Fix: Run `clawmem embed` or wait for daily embed timer (04:00 UTC).
+  → Fix: Run `clawmem embed` or wait for the daily embed timer.
 
 Symptom: context-surfacing hook returns empty
   → Prompt too short (<20 chars), starts with `/`, or no docs score above threshold.
