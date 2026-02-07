@@ -526,12 +526,11 @@ For agent systems using ClawMem as their memory backend, this 5-layer structure 
 | 3. Project Long-Term | `Projects/X/MEMORY.md` | Manual | Indexed per-collection, decisions auto-captured |
 | 4. Project Daily | `Projects/X/memory/*.md` | Manual | Indexed, searched |
 | 5. Research Dumps | `Projects/X/research/*.md` | Manual | Fragment-embedded for granular retrieval |
-
-Manual layers benefit from periodic re-indexing — a cron job running `clawmem update --embed` keeps the index fresh for content edited outside of watched directories.
-
 | Auto: Decisions | `_clawmem/decisions/*.md` | Auto | Observer-extracted from transcripts |
 | Auto: Handoffs | `_clawmem/handoffs/*.md` | Auto | Session summaries with next steps |
 | Auto: Profile | `_clawmem/profile.md` | Auto | Static facts + dynamic context |
+
+Manual layers benefit from periodic re-indexing — a cron job running `clawmem update --embed` keeps the index fresh for content edited outside of watched directories.
 
 ### Setup for OpenClaw
 
