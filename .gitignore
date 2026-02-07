@@ -1,0 +1,17 @@
+node_modules/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# All documentation except README.md and CLAUDE.md
+*.md
+!README.md
+!CLAUDE.md
+!AGENTS.md
+
+# Internal dev artifacts
+.ralph/
+ralph.yml
+Brain.
+test-beads/
+config.yaml

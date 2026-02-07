@@ -1,0 +1,10 @@
+[
+  "../../../etc/passwd",
+  "..\\..\\..\\windows\\system32",
+  "valid/path/to/file.md",
+  "also-valid.md",
+  "sub/dir/../../../escape.md",
+  "normal/path.md",
+  "\u0000null-byte.md",
+  "a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q/r/s/t/u/v/w/x/y/z/deep.md"
+]

@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# clawmem - Hybrid Agent Memory (QMD search + SAME memory layer)
+set -euo pipefail
+
+# Find bun - prefer PATH, fallback to known locations
+find_bun() {
+  if command -v bun &>/dev/null; then
+    local ver=$(bun --version 2>/dev/null || echo "0")
+    if [[ "$ver" =~ ^1\. ]]; then
+      command -v bun
+      return 0
+    fi
+  fi
+
+  : "${HOME:=$(eval echo ~)}"
+
+  if [[ "${BASH_SOURCE[0]}" == */.bun/* ]]; then
+    local bun_home="${BASH_SOURCE[0]%%/.bun/*}/.bun"
+    if [[ -x "$bun_home/bin/bun" ]]; then
+      echo "$bun_home/bin/bun"
+      return 0
+    fi
+  fi
+
+  local candidates=(
+    "$HOME/.local/share/mise/installs/bun/latest/bin/bun"
+    "$HOME/.local/share/mise/shims/bun"
+    "$HOME/.asdf/shims/bun"
+    "/opt/homebrew/bin/bun"
+    "/usr/local/bin/bun"
+    "$HOME/.bun/bin/bun"
+  )
+  for c in "${candidates[@]}"; do
+    [[ -x "$c" ]] && { echo "$c"; return 0; }
+  done
+
+  return 1
+}
+
+# GPU inference endpoints — set these to your llama-server instances
+# Embedding (granite-278m or similar, --embeddings mode)
+export CLAWMEM_EMBED_URL="${CLAWMEM_EMBED_URL:-http://localhost:8088}"
+# LLM text generation (Qwen3-1.7B or similar, /v1/chat/completions)
+export CLAWMEM_LLM_URL="${CLAWMEM_LLM_URL:-http://localhost:8089}"
+# Cross-encoder reranker (qwen3-reranker or similar)
+export CLAWMEM_RERANK_URL="${CLAWMEM_RERANK_URL:-http://localhost:8090}"
+BUN=$(find_bun) || { echo "Error: bun not found. Install from https://bun.sh" >&2; exit 1; }
+
+# Resolve symlinks to find script location
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+
+exec "$BUN" "$SCRIPT_DIR/../src/clawmem.ts" "$@"

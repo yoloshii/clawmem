@@ -1,0 +1,38 @@
+{
+  "name": "clawmem",
+  "version": "0.1.0",
+  "description": "Hybrid agent memory: QMD search backend + SAME agent memory layer",
+  "type": "module",
+  "bin": {
+    "clawmem": "./bin/clawmem"
+  },
+  "scripts": {
+    "test": "bun test",
+    "dev": "bun src/clawmem.ts",
+    "inspector": "npx @modelcontextprotocol/inspector bun src/clawmem.ts mcp"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.1",
+    "gray-matter": "^4.0.3",
+    "node-llama-cpp": "^3.14.5",
+    "sqlite-vec": "^0.1.7-alpha.2",
+    "yaml": "^2.8.2",
+    "zod": "^4.2.1"
+  },
+  "optionalDependencies": {
+    "sqlite-vec-darwin-arm64": "^0.1.7-alpha.2",
+    "sqlite-vec-darwin-x64": "^0.1.7-alpha.2",
+    "sqlite-vec-linux-x64": "^0.1.7-alpha.2",
+    "sqlite-vec-win32-x64": "^0.1.7-alpha.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "license": "MIT"
+}
