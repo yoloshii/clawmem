@@ -100,15 +100,15 @@ One command to set up a vault:
 
 ### GPU Services
 
-ClawMem uses three remote GPU servers for inference. All three are served by `llama-server` (llama.cpp).
+ClawMem offloads all neural inference to remote GPU servers running `llama-server` (llama.cpp). This keeps the main process lightweight and avoids loading multi-GB models into the Bun runtime.
 
-| Service | Model | Port | VRAM | Purpose |
-|---|---|---|---|---|
-| Embedding | granite-embedding-278m-multilingual-Q6_K | 8088 | ~400MB | Vector search, indexing, context-surfacing |
-| LLM | Qwen3-1.7B-Q8_0 | 8089 | ~2.8GB | Intent classification, query expansion, A-MEM |
-| Reranker | qwen3-reranker-0.6B-Q8_0 | 8090 | ~1.3GB | Cross-encoder reranking (query, intent_search) |
+| Service | Env Variable | Model | Port | VRAM | Purpose |
+|---|---|---|---|---|---|
+| Embedding | `CLAWMEM_EMBED_URL` | granite-embedding-278m-multilingual-Q6_K | 8088 | ~400MB | Vector search, indexing, context-surfacing |
+| LLM | `CLAWMEM_LLM_URL` | qmd-query-expansion-1.7B | 8089 | ~2.8GB | Intent classification, query expansion, A-MEM |
+| Reranker | `CLAWMEM_RERANK_URL` | qwen3-reranker-0.6B-Q8_0 | 8090 | ~1.3GB | Cross-encoder reranking (query, intent_search) |
 
-Set all three via environment variables or the wrapper script (`bin/clawmem`):
+All three run on any machine with a GPU. They communicate via HTTP (OpenAI-compatible `/v1/` endpoints) and can be colocated or distributed.
 
 ```bash
 export CLAWMEM_EMBED_URL=http://your-gpu-server:8088
@@ -116,17 +116,20 @@ export CLAWMEM_LLM_URL=http://your-gpu-server:8089
 export CLAWMEM_RERANK_URL=http://your-gpu-server:8090
 ```
 
-Without `CLAWMEM_RERANK_URL`, falls back to local `node-llama-cpp` on CPU (auto-downloads ~600MB model to `~/.cache/clawmem/models/`). CPU reranking is functional but significantly slower.
+**Fallback behavior:**
+- Without `CLAWMEM_EMBED_URL`: embedding fails (required for vector search, indexing, context-surfacing)
+- Without `CLAWMEM_LLM_URL`: falls back to local `node-llama-cpp` on CPU — auto-downloads ~2.1GB model to `~/.cache/qmd/models/`. CPU inference is unreliable for Qwen3-1.7B (truncated output, ~100% failure rate). The heuristic intent classifier still works without the LLM.
+- Without `CLAWMEM_RERANK_URL`: falls back to local `node-llama-cpp` on CPU — auto-downloads ~600MB model. Functional but significantly slower.
 
-Without `CLAWMEM_LLM_URL`, falls back to local `node-llama-cpp` on CPU, which is unreliable for Qwen3-1.7B (truncated output, ~100% failure rate). The heuristic intent classifier still works without the LLM.
+**Total VRAM:** ~4.5GB for all three services. Fits comfortably on any modern GPU alongside other workloads.
 
 ### Embedding Server (Required)
 
-Embeddings are served by a remote GPU server running [granite-embedding-278m-multilingual-Q6_K](https://huggingface.co/bartowski/granite-embedding-278m-multilingual-GGUF).
+Embeddings are served by a remote GPU server running [granite-embedding-278m-multilingual-Q6_K](https://huggingface.co/bartowski/granite-embedding-278m-multilingual-GGUF). ClawMem calls the OpenAI-compatible `/v1/embeddings` endpoint exposed by `llama-server --embeddings`.
 
 **Model specs:**
 - Size: 226MB, Dimensions: 768
-- Performance: **~5ms per fragment** on RTX 3090
+- Performance: **~5ms per fragment**, ~200 fragments/sec on RTX 3090
 - Benchmark: 180 docs, 6,335 fragments in **67 seconds**
 
 **Known issues:**
@@ -146,6 +149,8 @@ llama-server -m granite-embedding-278m-multilingual-Q6_K.gguf \
   --no-mmap -ngl 99 -c 2048 --batch-size 2048
 ```
 
+**Verify:** `curl http://localhost:8088/v1/embeddings -d '{"input":"test","model":"embedding"}' -H 'Content-Type: application/json'` should return a 768-dimensional vector.
+
 To embed your vault:
 
 ```bash
@@ -154,12 +159,21 @@ To embed your vault:
 
 ### LLM Server (Recommended)
 
-Intent classification, query expansion, and A-MEM extraction use a remote LLM server running [Qwen3-1.7B-Q8_0](https://huggingface.co/ggml-org/Qwen3-1.7B-Q8_0-GGUF).
+Intent classification, query expansion, and A-MEM extraction use a remote LLM server. The recommended model is QMD's finetuned query expansion model, which is a Qwen3-1.7B specifically trained for generating search expansion terms (hyde, lexical, and vector variants).
 
-**Model specs:**
-- Size: 2.1GB (Q8_0), VRAM: ~2.2GB on GPU
-- Performance: **27ms** intent classification, **333 tok/s** on RTX 3090
-- Same model as QMD (finetuned for query expansion)
+**Model choice (pick one):**
+
+| Model | Source | Size | Notes |
+|---|---|---|---|
+| **qmd-query-expansion-1.7B-q4_k_m** (recommended) | [tobil/qmd-query-expansion-1.7B-gguf](https://huggingface.co/tobil/qmd-query-expansion-1.7B-gguf) | ~1.1GB | QMD's finetune — trained specifically for query expansion. Better expansion quality, smaller quantization. |
+| Qwen3-1.7B-Q8_0 | [ggml-org/Qwen3-1.7B-Q8_0-GGUF](https://huggingface.co/ggml-org/Qwen3-1.7B-Q8_0-GGUF) | ~2.1GB | Generic base model. Works but not optimized for expansion. |
+
+The finetuned model downloads automatically through `node-llama-cpp` if you set the local fallback model URI (see Configuration below), or you can serve it directly via `llama-server`.
+
+**Performance (RTX 3090):**
+- Intent classification: **27ms**
+- Query expansion: **333 tok/s**
+- VRAM: ~2.2-2.8GB depending on quantization
 
 **Qwen3 /no_think flag:** Qwen3 uses thinking tokens by default. ClawMem appends `/no_think` to all prompts automatically to get structured output in the `content` field.
 
@@ -170,15 +184,25 @@ Intent classification, query expansion, and A-MEM extraction use a remote LLM se
 **Server setup:**
 
 ```bash
+# Download the finetuned model (recommended)
+wget https://huggingface.co/tobil/qmd-query-expansion-1.7B-gguf/resolve/main/qmd-query-expansion-1.7B-q4_k_m.gguf
+
 # Start llama-server for LLM inference
-llama-server -m Qwen3-1.7B-Q8_0.gguf \
+llama-server -m qmd-query-expansion-1.7B-q4_k_m.gguf \
   --port 8089 --host 0.0.0.0 \
   -ngl 99 -c 4096 --batch-size 512
 ```
 
+**Local fallback model:** When `CLAWMEM_LLM_URL` is not set, `node-llama-cpp` auto-downloads from HuggingFace. To use the finetuned model locally, update the `DEFAULT_GENERATE_MODEL` constant in `src/llm.ts`:
+
+```typescript
+// QMD's finetuned query expansion model (recommended)
+const DEFAULT_GENERATE_MODEL = "hf:tobil/qmd-query-expansion-1.7B-gguf/qmd-query-expansion-1.7B-q4_k_m.gguf";
+```
+
 ### Reranker Server (Recommended)
 
-Cross-encoder reranking for `query` and `intent_search` pipelines using [qwen3-reranker-0.6B-Q8_0](https://huggingface.co/ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF). Set `CLAWMEM_RERANK_URL` to point to it:
+Cross-encoder reranking for `query` and `intent_search` pipelines using [qwen3-reranker-0.6B-Q8_0](https://huggingface.co/ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF). ClawMem calls the `/v1/rerank` endpoint (or falls back to scoring via `/v1/completions` for compatible servers).
 
 ```bash
 export CLAWMEM_RERANK_URL=http://your-gpu-server:8090
@@ -197,10 +221,10 @@ export CLAWMEM_RERANK_URL=http://your-gpu-server:8090
 
 **Model specs:**
 - Size: ~600MB (Q8_0), VRAM: ~1.3GB on GPU
-- Scores each candidate against the original query (cross-encoder)
-- `query` pipeline: 4000 char context per doc; `intent_search`: 200 char context per doc
+- Scores each candidate against the original query (cross-encoder architecture)
+- `query` pipeline: 4000 char context per doc (deep reranking); `intent_search`: 200 char context per doc (fast reranking)
 
-Without `CLAWMEM_RERANK_URL`, falls back to local `node-llama-cpp` on CPU (auto-downloads ~600MB model). CPU reranking is functional but significantly slower.
+Without `CLAWMEM_RERANK_URL`, falls back to local `node-llama-cpp` on CPU (auto-downloads ~600MB model). Functional but significantly slower.
 
 **Server setup:**
 
@@ -401,7 +425,7 @@ Documents are split into semantic fragments (sections, lists, code blocks, front
 
 ### Local Observer Agent
 
-Uses Qwen3-1.7B (shared with query expansion) to extract structured observations from session transcripts: type, title, facts, narrative, concepts, files read/modified. Falls back to regex patterns if the model is unavailable.
+Uses the LLM server (shared with query expansion and intent classification) to extract structured observations from session transcripts: type, title, facts, narrative, concepts, files read/modified. Falls back to regex patterns if the model is unavailable.
 
 ### User Profile
 
@@ -436,6 +460,7 @@ Notes referenced by the agent during a session get boosted (`access_count++`). U
 | `CLAWMEM_CONSOLIDATION_INTERVAL` | 300000 | Worker interval in ms (min 15000) |
 | `CLAWMEM_EMBED_URL` | **required** | GPU embedding server URL (e.g. `http://host:8088`) |
 | `CLAWMEM_LLM_URL` | recommended | GPU LLM server URL for intent/query/A-MEM (e.g. `http://host:8089`) |
+| `CLAWMEM_RERANK_URL` | recommended | GPU reranker server URL (e.g. `http://host:8090`) |
 
 ## Configuration
 

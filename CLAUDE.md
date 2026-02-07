@@ -40,6 +40,11 @@ All other retrieval is handled by Tier 2 hooks. Do NOT call MCP tools speculativ
     Use DIRECTLY (not as fallback) when the question is "why", "when", "how did X lead to Y",
     or needs entity-relationship traversal.
     Override auto-detection: force_intent="WHY"|"WHEN"|"ENTITY"|"WHAT"
+    When to override:
+      WHY — "why", "what led to", "rationale", "tradeoff", "decision behind"
+      ENTITY — named component/person/service needing cross-doc linkage, not just keyword hits
+      WHEN — timelines, first/last occurrence, "when did this change/regress"
+    WHEN note: start with enable_graph_traversal=false (BM25-biased); fall back to query() if recall drifts.
 
     Choose 1a or 1b based on query type. They are parallel options, not sequential.
 
