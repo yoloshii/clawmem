@@ -42,8 +42,7 @@ Have a GPU server (any NVIDIA GPU with ≥5GB VRAM)?
 | Role | Recommended Model | Source | Size | Notes |
 |---|---|---|---|---|
 | Embedding | granite-embedding-278m-multilingual-Q6_K | [bartowski/granite-embedding-278m-multilingual-GGUF](https://huggingface.co/bartowski/granite-embedding-278m-multilingual-GGUF) | 226MB | 768 dimensions. 512-token context (~1100 chars). Client-side truncation prevents 500 errors. |
-| LLM | **qmd-query-expansion-1.7B-q4_k_m** | [tobil/qmd-query-expansion-1.7B-gguf](https://huggingface.co/tobil/qmd-query-expansion-1.7B-gguf) | ~1.1GB | QMD's finetune — trained specifically for query expansion (hyde/lex/vec). Smaller and better than generic Qwen3-1.7B. |
-| LLM (alt) | Qwen3-1.7B-Q8_0 | [ggml-org/Qwen3-1.7B-Q8_0-GGUF](https://huggingface.co/ggml-org/Qwen3-1.7B-Q8_0-GGUF) | ~2.1GB | Generic base. Works but not optimized for expansion. |
+| LLM | qmd-query-expansion-1.7B-q4_k_m | [tobil/qmd-query-expansion-1.7B-gguf](https://huggingface.co/tobil/qmd-query-expansion-1.7B-gguf) | ~1.1GB | QMD's Qwen3-1.7B finetune — trained specifically for query expansion (hyde/lex/vec). |
 | Reranker | qwen3-reranker-0.6B-Q8_0 | [ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF](https://huggingface.co/ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF) | ~600MB | Cross-encoder architecture. Scores candidates against original query. |
 
 **Qwen3 /no_think flag:** Qwen3 uses thinking tokens by default. ClawMem appends `/no_think` to all prompts automatically for structured output.

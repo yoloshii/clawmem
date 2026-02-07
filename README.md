@@ -1,6 +1,6 @@
 # ClawMem
 
-Hybrid agent memory system for [OpenClaw](https://github.com/openclaw/openclaw). Combines [QMD](https://github.com/tobi/qmd)'s search backend (BM25 + vectors + RRF + query expansion + cross-encoder reranking) with agent-specific memory scoring, multi-graph traversal, self-evolving memory notes, and causal inference.
+Hybrid agent memory system built on [QMD](https://github.com/tobi/qmd)'s retrieval substrate (BM25 + vectors + RRF + query expansion + cross-encoder reranking), layered with [SAME](https://github.com/sgx-labs/statelessagent)-derived composite scoring (recency decay, confidence, content-type half-lives), [MAGMA](https://arxiv.org/abs/2501.13956)-inspired intent classification and multi-graph traversal (semantic, temporal, causal beam search), and [A-MEM](https://arxiv.org/abs/2510.02178) self-evolving memory notes with automatic keyword/tag/context enrichment and inter-document link generation. Designed for [OpenClaw](https://github.com/openclaw/openclaw) and Claude Code.
 
 TypeScript on Bun. ~12,700 lines across 30 source files. 103 tests.
 
@@ -173,14 +173,7 @@ To embed your vault:
 
 ### LLM Server (Recommended)
 
-Intent classification, query expansion, and A-MEM extraction use a remote LLM server. The recommended model is QMD's finetuned query expansion model, which is a Qwen3-1.7B specifically trained for generating search expansion terms (hyde, lexical, and vector variants).
-
-**Model choice (pick one):**
-
-| Model | Source | Size | Notes |
-|---|---|---|---|
-| **qmd-query-expansion-1.7B-q4_k_m** (recommended) | [tobil/qmd-query-expansion-1.7B-gguf](https://huggingface.co/tobil/qmd-query-expansion-1.7B-gguf) | ~1.1GB | QMD's finetune — trained specifically for query expansion. Better expansion quality, smaller quantization. |
-| Qwen3-1.7B-Q8_0 | [ggml-org/Qwen3-1.7B-Q8_0-GGUF](https://huggingface.co/ggml-org/Qwen3-1.7B-Q8_0-GGUF) | ~2.1GB | Generic base model. Works but not optimized for expansion. |
+Intent classification, query expansion, and A-MEM extraction use a remote LLM server running [qmd-query-expansion-1.7B](https://huggingface.co/tobil/qmd-query-expansion-1.7B-gguf) — a Qwen3-1.7B finetuned by QMD specifically for generating search expansion terms (hyde, lexical, and vector variants). ~1.1GB at q4_k_m quantization.
 
 Serve via `llama-server` on your GPU host. In local mode (`CLAWMEM_NO_LOCAL_MODELS=false`), `node-llama-cpp` auto-downloads the model configured in `src/llm.ts:DEFAULT_GENERATE_MODEL`.
 
