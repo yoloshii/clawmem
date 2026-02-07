@@ -1,41 +1,20 @@
 # ClawMem — Agent Quick Reference
 
-## Deployment Mode Detection
+## Inference Services
 
-Check which mode is active before advising on setup, performance, or troubleshooting.
+ClawMem uses three `llama-server` instances for neural inference. By default, the `bin/clawmem` wrapper points at `localhost:8088/8089/8090` — run them on your local GPU.
 
-```
-GPU Mode (recommended):
-  CLAWMEM_EMBED_URL set     → remote embedding (required, no local fallback)
-  CLAWMEM_LLM_URL set       → remote LLM (intent, expansion, A-MEM)
-  CLAWMEM_RERANK_URL set    → remote reranking (cross-encoder)
-  CLAWMEM_NO_LOCAL_MODELS=true → blocks node-llama-cpp auto-downloads
-
-Local Mode (no GPU server):
-  CLAWMEM_EMBED_URL unset   → FATAL: embedding has no local fallback
-  CLAWMEM_LLM_URL unset     → local node-llama-cpp (slow, unreliable on CPU)
-  CLAWMEM_RERANK_URL unset  → local node-llama-cpp (slow)
-  CLAWMEM_NO_LOCAL_MODELS=false → allows auto-download (~1.7GB total)
-```
-
-**Decision tree for new users:**
-```
-Have a GPU server (any NVIDIA GPU with ≥5GB VRAM)?
-  YES → GPU Mode. Set all 3 endpoint vars. Keep CLAWMEM_NO_LOCAL_MODELS=true (default).
-  NO  → Local Mode. Unset endpoint vars. Set CLAWMEM_NO_LOCAL_MODELS=false.
-        WARNING: CPU inference is slow and query expansion has ~100% failure rate.
-        Embedding server is STILL required — host it somewhere or use a cloud endpoint.
-```
-
-## GPU Services Reference
-
-| Service | Env Variable | Default Port | Model | VRAM | Protocol |
-|---|---|---|---|---|---|
-| Embedding | `CLAWMEM_EMBED_URL` | 8088 | granite-embedding-278m-multilingual-Q6_K | ~400MB | `/v1/embeddings` (OpenAI-compatible) |
-| LLM | `CLAWMEM_LLM_URL` | 8089 | **qmd-query-expansion-1.7B-q4_k_m** | ~2.2GB | `/v1/chat/completions` (OpenAI-compatible) |
-| Reranker | `CLAWMEM_RERANK_URL` | 8090 | qwen3-reranker-0.6B-Q8_0 | ~1.3GB | `/v1/rerank` or `/v1/completions` fallback |
+| Service | Port | Model | VRAM | Protocol |
+|---|---|---|---|---|
+| Embedding | 8088 | granite-embedding-278m-multilingual-Q6_K | ~400MB | `/v1/embeddings` |
+| LLM | 8089 | qmd-query-expansion-1.7B-q4_k_m | ~2.2GB | `/v1/chat/completions` |
+| Reranker | 8090 | qwen3-reranker-0.6B-Q8_0 | ~1.3GB | `/v1/rerank` |
 
 **Total VRAM:** ~4.5GB. Fits alongside other workloads on any modern GPU.
+
+**Remote option:** To offload to a separate GPU machine, set `CLAWMEM_EMBED_URL`, `CLAWMEM_LLM_URL`, `CLAWMEM_RERANK_URL` to the remote host. Set `CLAWMEM_NO_LOCAL_MODELS=true` to prevent surprise fallback downloads.
+
+**No GPU:** LLM and reranker can fall back to in-process `node-llama-cpp` (set `CLAWMEM_NO_LOCAL_MODELS=false`). CPU inference works but is slow and unreliable for query expansion. Embedding has no in-process fallback — a `llama-server --embeddings` instance is always required.
 
 ### Model Recommendations
 
@@ -78,17 +57,17 @@ curl http://host:8090/v1/models
 
 ## Environment Variable Reference
 
-| Variable | Default | Required | Effect |
-|---|---|---|---|
-| `CLAWMEM_EMBED_URL` | — | **Yes** | GPU embedding server. No local fallback exists. |
-| `CLAWMEM_LLM_URL` | — | Recommended | GPU LLM for intent classification, query expansion, A-MEM. Falls to local if unset + `NO_LOCAL_MODELS=false`. |
-| `CLAWMEM_RERANK_URL` | — | Recommended | GPU reranker for cross-encoder scoring. Falls to local if unset + `NO_LOCAL_MODELS=false`. |
-| `CLAWMEM_NO_LOCAL_MODELS` | `true` (via wrapper) | — | Blocks `node-llama-cpp` auto-downloads. Set `false` for local-only setups. |
-| `CLAWMEM_ENABLE_AMEM` | enabled | — | A-MEM note construction + link generation during indexing. |
-| `CLAWMEM_ENABLE_CONSOLIDATION` | disabled | — | Background worker backfills unenriched docs. Needs long-lived MCP process. |
-| `CLAWMEM_CONSOLIDATION_INTERVAL` | 300000 | — | Worker interval in ms (min 15000). |
+| Variable | Default (via wrapper) | Effect |
+|---|---|---|
+| `CLAWMEM_EMBED_URL` | `http://localhost:8088` | Embedding server. No in-process fallback — `llama-server --embeddings` required. |
+| `CLAWMEM_LLM_URL` | `http://localhost:8089` | LLM server for intent, expansion, A-MEM. Falls to `node-llama-cpp` if unset + `NO_LOCAL_MODELS=false`. |
+| `CLAWMEM_RERANK_URL` | `http://localhost:8090` | Reranker server. Falls to `node-llama-cpp` if unset + `NO_LOCAL_MODELS=false`. |
+| `CLAWMEM_NO_LOCAL_MODELS` | `true` | Blocks `node-llama-cpp` from auto-downloading GGUF models. Set `false` for in-process fallback. |
+| `CLAWMEM_ENABLE_AMEM` | enabled | A-MEM note construction + link generation during indexing. |
+| `CLAWMEM_ENABLE_CONSOLIDATION` | disabled | Background worker backfills unenriched docs. Needs long-lived MCP process. |
+| `CLAWMEM_CONSOLIDATION_INTERVAL` | 300000 | Worker interval in ms (min 15000). |
 
-**Note:** The `bin/clawmem` wrapper script sets `CLAWMEM_EMBED_URL`, `CLAWMEM_LLM_URL`, `CLAWMEM_RERANK_URL`, and `CLAWMEM_NO_LOCAL_MODELS` with defaults. Always use the wrapper — never `bun run src/clawmem.ts` directly.
+**Note:** The `bin/clawmem` wrapper sets all endpoint defaults and `CLAWMEM_NO_LOCAL_MODELS`. Always use the wrapper — never `bun run src/clawmem.ts` directly.
 
 ## Quick Setup
 
@@ -330,12 +309,12 @@ Write to `docs/issues/YYYY-MM-DD-<slug>.md` with: category, severity, what happe
 
 ```
 Symptom: "Local model download blocked" error
-  → GPU endpoint unreachable while CLAWMEM_NO_LOCAL_MODELS=true.
-  → Fix: Check GPU server is running. Or set CLAWMEM_NO_LOCAL_MODELS=false for local fallback.
+  → llama-server endpoint unreachable while CLAWMEM_NO_LOCAL_MODELS=true.
+  → Fix: Start the llama-server instance. Or set CLAWMEM_NO_LOCAL_MODELS=false for in-process fallback.
 
 Symptom: Query expansion always fails / returns garbage
-  → CPU inference with Qwen3-1.7B is unreliable (~100% failure rate).
-  → Fix: Set up a GPU server. Even a low-end NVIDIA GPU handles 1.7B models.
+  → In-process CPU inference with Qwen3-1.7B is unreliable (~100% failure rate).
+  → Fix: Run llama-server on a GPU. Even a low-end NVIDIA card handles 1.7B models.
 
 Symptom: Vector search returns no results but BM25 works
   → Missing embeddings. Watcher indexes but does NOT embed.
@@ -358,8 +337,8 @@ Run `clawmem --help` for full command listing. Use this before guessing at comma
 
 - QMD retrieval (BM25, vector, RRF, rerank, query expansion) is forked into ClawMem. Do not call standalone QMD tools.
 - SAME (composite scoring), MAGMA (intent + graph), A-MEM (self-evolving notes) layer on top of QMD substrate.
-- GPU services: embedding (required), LLM (recommended), reranker (recommended). Set via `CLAWMEM_EMBED_URL`, `CLAWMEM_LLM_URL`, `CLAWMEM_RERANK_URL`.
-- `CLAWMEM_NO_LOCAL_MODELS=true` (default via wrapper) prevents surprise multi-GB downloads. Operations fail fast if GPU endpoint is unreachable.
+- Three `llama-server` instances (embedding, LLM, reranker) on local or remote GPU. Wrapper defaults to `localhost:8088/8089/8090`.
+- `CLAWMEM_NO_LOCAL_MODELS=true` (default) prevents surprise multi-GB downloads when a server is unreachable. Set `false` for in-process LLM/reranker fallback.
 - Consolidation worker (`CLAWMEM_ENABLE_CONSOLIDATION=true`) backfills unenriched docs with A-MEM notes + links. Only runs if the MCP process stays alive long enough to tick (every 5min). Not reliable in stateless `--print` per-request mode.
 - Stop hooks (`decision-extractor`, `handoff-generator`, `feedback-loop`) are unreliable under `--print` mode. IO3 (`postrun.go`) fills the gap by invoking these hooks post-response with synthetic transcripts.
 - Beads integration: `syncBeadsIssues()` creates markdown docs in `beads` collection, maps dependency edges (`blocks`→causal, `discovered-from`→supporting, `relates-to`→semantic) into `memory_relations`, and triggers A-MEM enrichment for new docs. Watcher auto-triggers on `.beads/beads.jsonl` changes; `beads_sync` MCP tool for manual sync.
