@@ -14,7 +14,7 @@ ClawMem uses three `llama-server` instances for neural inference. By default, th
 
 **Remote option:** To offload to a separate GPU machine, set `CLAWMEM_EMBED_URL`, `CLAWMEM_LLM_URL`, `CLAWMEM_RERANK_URL` to the remote host. Set `CLAWMEM_NO_LOCAL_MODELS=true` to prevent surprise fallback downloads.
 
-**No GPU:** LLM and reranker can fall back to in-process `node-llama-cpp` (set `CLAWMEM_NO_LOCAL_MODELS=false`). CPU inference works but is slow and unreliable for query expansion. Embedding has no in-process fallback — a `llama-server --embeddings` instance is always required.
+**No GPU:** LLM and reranker fall back to in-process `node-llama-cpp` automatically (auto-downloads models on first use). CPU inference works but is significantly slower — GPU is strongly recommended. Embedding has no in-process fallback — a `llama-server --embeddings` instance is always required.
 
 ### Model Recommendations
 
@@ -62,7 +62,7 @@ curl http://host:8090/v1/models
 | `CLAWMEM_EMBED_URL` | `http://localhost:8088` | Embedding server. No in-process fallback — `llama-server --embeddings` required. |
 | `CLAWMEM_LLM_URL` | `http://localhost:8089` | LLM server for intent, expansion, A-MEM. Falls to `node-llama-cpp` if unset + `NO_LOCAL_MODELS=false`. |
 | `CLAWMEM_RERANK_URL` | `http://localhost:8090` | Reranker server. Falls to `node-llama-cpp` if unset + `NO_LOCAL_MODELS=false`. |
-| `CLAWMEM_NO_LOCAL_MODELS` | `true` | Blocks `node-llama-cpp` from auto-downloading GGUF models. Set `false` for in-process fallback. |
+| `CLAWMEM_NO_LOCAL_MODELS` | `false` | Blocks `node-llama-cpp` from auto-downloading GGUF models. Set `true` for remote-only setups. |
 | `CLAWMEM_ENABLE_AMEM` | enabled | A-MEM note construction + link generation during indexing. |
 | `CLAWMEM_ENABLE_CONSOLIDATION` | disabled | Background worker backfills unenriched docs. Needs long-lived MCP process. |
 | `CLAWMEM_CONSOLIDATION_INTERVAL` | 300000 | Worker interval in ms (min 15000). |
@@ -313,7 +313,7 @@ Symptom: "Local model download blocked" error
   → Fix: Start the llama-server instance. Or set CLAWMEM_NO_LOCAL_MODELS=false for in-process fallback.
 
 Symptom: Query expansion always fails / returns garbage
-  → In-process CPU inference with Qwen3-1.7B is unreliable (~100% failure rate).
+  → In-process CPU inference is significantly slower and less reliable than GPU.
   → Fix: Run llama-server on a GPU. Even a low-end NVIDIA card handles 1.7B models.
 
 Symptom: Vector search returns no results but BM25 works
@@ -338,7 +338,7 @@ Run `clawmem --help` for full command listing. Use this before guessing at comma
 - QMD retrieval (BM25, vector, RRF, rerank, query expansion) is forked into ClawMem. Do not call standalone QMD tools.
 - SAME (composite scoring), MAGMA (intent + graph), A-MEM (self-evolving notes) layer on top of QMD substrate.
 - Three `llama-server` instances (embedding, LLM, reranker) on local or remote GPU. Wrapper defaults to `localhost:8088/8089/8090`.
-- `CLAWMEM_NO_LOCAL_MODELS=true` (default) prevents surprise multi-GB downloads when a server is unreachable. Set `false` for in-process LLM/reranker fallback.
+- `CLAWMEM_NO_LOCAL_MODELS=false` (default) allows in-process LLM/reranker fallback via `node-llama-cpp`. Set `true` for remote-only setups to fail fast on unreachable endpoints.
 - Consolidation worker (`CLAWMEM_ENABLE_CONSOLIDATION=true`) backfills unenriched docs with A-MEM notes + links. Only runs if the MCP process stays alive long enough to tick (every 5min). Not reliable in stateless `--print` per-request mode.
 - Stop hooks (`decision-extractor`, `handoff-generator`, `feedback-loop`) are unreliable under `--print` mode. IO3 (`postrun.go`) fills the gap by invoking these hooks post-response with synthetic transcripts.
 - Beads integration: `syncBeadsIssues()` creates markdown docs in `beads` collection, maps dependency edges (`blocks`→causal, `discovered-from`→supporting, `relates-to`→semantic) into `memory_relations`, and triggers A-MEM enrichment for new docs. Watcher auto-triggers on `.beads/beads.jsonl` changes; `beads_sync` MCP tool for manual sync.

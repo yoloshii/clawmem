@@ -120,7 +120,7 @@ export CLAWMEM_LLM_URL=http://gpu-host:8089
 export CLAWMEM_RERANK_URL=http://gpu-host:8090
 ```
 
-When using remote endpoints, the wrapper sets `CLAWMEM_NO_LOCAL_MODELS=true` by default, which prevents `node-llama-cpp` from auto-downloading multi-GB model files if a server is unreachable. Operations fail fast instead.
+For remote setups, set `CLAWMEM_NO_LOCAL_MODELS=true` to prevent `node-llama-cpp` from auto-downloading multi-GB model files if a server is unreachable. Operations fail fast instead of silently falling back.
 
 #### CPU-Only Mode (no GPU)
 
@@ -131,7 +131,7 @@ unset CLAWMEM_EMBED_URL CLAWMEM_LLM_URL CLAWMEM_RERANK_URL
 export CLAWMEM_NO_LOCAL_MODELS=false
 ```
 
-`node-llama-cpp` will auto-download GGUF models on first use (~1.1GB LLM + ~600MB reranker). CPU inference is functional but significantly slower and less reliable — query expansion has ~100% failure rate on CPU. The heuristic intent classifier still works without the LLM.
+`node-llama-cpp` will auto-download GGUF models on first use (~1.1GB LLM + ~600MB reranker). CPU inference is functional but significantly slower — GPU inference is orders of magnitude faster for query expansion and reranking. The heuristic intent classifier still works without the LLM.
 
 **Note:** Embedding requires a running `llama-server --embeddings` instance (local or remote) — there is no in-process fallback for embedding.
 
@@ -173,7 +173,7 @@ To embed your vault:
 
 Intent classification, query expansion, and A-MEM extraction use [qmd-query-expansion-1.7B](https://huggingface.co/tobil/qmd-query-expansion-1.7B-gguf) — a Qwen3-1.7B finetuned by QMD specifically for generating search expansion terms (hyde, lexical, and vector variants). ~1.1GB at q4_k_m quantization, served via `llama-server` on port 8089.
 
-**Without a server:** If `CLAWMEM_LLM_URL` is unset and `CLAWMEM_NO_LOCAL_MODELS=false`, `node-llama-cpp` auto-downloads the model. CPU inference works but is unreliable for query expansion.
+**Without a server:** If `CLAWMEM_LLM_URL` is unset, `node-llama-cpp` auto-downloads the model on first use. CPU inference works but is significantly slower than GPU — running `llama-server` on even a modest GPU is strongly recommended for responsive query expansion.
 
 **Performance (RTX 3090):**
 - Intent classification: **27ms**
@@ -209,7 +209,7 @@ Cross-encoder reranking for `query` and `intent_search` pipelines using [qwen3-r
 - Scores each candidate against the original query (cross-encoder architecture)
 - `query` pipeline: 4000 char context per doc (deep reranking); `intent_search`: 200 char context per doc (fast reranking)
 
-**Without a server:** If `CLAWMEM_RERANK_URL` is unset and `CLAWMEM_NO_LOCAL_MODELS=false`, `node-llama-cpp` auto-downloads the model (~600MB). CPU inference works but is significantly slower.
+**Without a server:** If `CLAWMEM_RERANK_URL` is unset, `node-llama-cpp` auto-downloads the model (~600MB) on first use. CPU inference works but is significantly slower than GPU.
 
 **Server setup:**
 
@@ -446,7 +446,7 @@ Notes referenced by the agent during a session get boosted (`access_count++`). U
 | `CLAWMEM_EMBED_URL` | `http://localhost:8088` | Embedding server URL. No in-process fallback — a `llama-server --embeddings` instance is required. |
 | `CLAWMEM_LLM_URL` | `http://localhost:8089` | LLM server URL for intent/query/A-MEM. Without it, falls to `node-llama-cpp` (if allowed). |
 | `CLAWMEM_RERANK_URL` | `http://localhost:8090` | Reranker server URL. Without it, falls to `node-llama-cpp` (if allowed). |
-| `CLAWMEM_NO_LOCAL_MODELS` | `true` | Block `node-llama-cpp` from auto-downloading GGUF models. Set `false` if you want in-process fallback for LLM/reranker. |
+| `CLAWMEM_NO_LOCAL_MODELS` | `false` | Block `node-llama-cpp` from auto-downloading GGUF models. Set `true` for remote-only setups where you want fail-fast on unreachable endpoints. |
 
 ## Configuration
 

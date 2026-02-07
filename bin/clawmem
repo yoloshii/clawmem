@@ -44,8 +44,9 @@ export CLAWMEM_EMBED_URL="${CLAWMEM_EMBED_URL:-http://localhost:8088}"
 export CLAWMEM_LLM_URL="${CLAWMEM_LLM_URL:-http://localhost:8089}"
 # Cross-encoder reranker (qwen3-reranker or similar)
 export CLAWMEM_RERANK_URL="${CLAWMEM_RERANK_URL:-http://localhost:8090}"
-# Block local model auto-downloads when GPU endpoints are set
-export CLAWMEM_NO_LOCAL_MODELS="${CLAWMEM_NO_LOCAL_MODELS:-true}"
+# Allow node-llama-cpp to auto-download models if no server is running.
+# Set to "true" in remote/distributed setups to prevent surprise downloads.
+export CLAWMEM_NO_LOCAL_MODELS="${CLAWMEM_NO_LOCAL_MODELS:-false}"
 BUN=$(find_bun) || { echo "Error: bun not found. Install from https://bun.sh" >&2; exit 1; }
 
 # Resolve symlinks to find script location
