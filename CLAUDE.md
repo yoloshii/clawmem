@@ -1,4 +1,119 @@
-# ClawMem — Agent Memory Orchestration
+# ClawMem — Agent Quick Reference
+
+## Deployment Mode Detection
+
+Check which mode is active before advising on setup, performance, or troubleshooting.
+
+```
+GPU Mode (recommended):
+  CLAWMEM_EMBED_URL set     → remote embedding (required, no local fallback)
+  CLAWMEM_LLM_URL set       → remote LLM (intent, expansion, A-MEM)
+  CLAWMEM_RERANK_URL set    → remote reranking (cross-encoder)
+  CLAWMEM_NO_LOCAL_MODELS=true → blocks node-llama-cpp auto-downloads
+
+Local Mode (no GPU server):
+  CLAWMEM_EMBED_URL unset   → FATAL: embedding has no local fallback
+  CLAWMEM_LLM_URL unset     → local node-llama-cpp (slow, unreliable on CPU)
+  CLAWMEM_RERANK_URL unset  → local node-llama-cpp (slow)
+  CLAWMEM_NO_LOCAL_MODELS=false → allows auto-download (~1.7GB total)
+```
+
+**Decision tree for new users:**
+```
+Have a GPU server (any NVIDIA GPU with ≥5GB VRAM)?
+  YES → GPU Mode. Set all 3 endpoint vars. Keep CLAWMEM_NO_LOCAL_MODELS=true (default).
+  NO  → Local Mode. Unset endpoint vars. Set CLAWMEM_NO_LOCAL_MODELS=false.
+        WARNING: CPU inference is slow and query expansion has ~100% failure rate.
+        Embedding server is STILL required — host it somewhere or use a cloud endpoint.
+```
+
+## GPU Services Reference
+
+| Service | Env Variable | Default Port | Model | VRAM | Protocol |
+|---|---|---|---|---|---|
+| Embedding | `CLAWMEM_EMBED_URL` | 8088 | granite-embedding-278m-multilingual-Q6_K | ~400MB | `/v1/embeddings` (OpenAI-compatible) |
+| LLM | `CLAWMEM_LLM_URL` | 8089 | **qmd-query-expansion-1.7B-q4_k_m** | ~2.2GB | `/v1/chat/completions` (OpenAI-compatible) |
+| Reranker | `CLAWMEM_RERANK_URL` | 8090 | qwen3-reranker-0.6B-Q8_0 | ~1.3GB | `/v1/rerank` or `/v1/completions` fallback |
+
+**Total VRAM:** ~4.5GB. Fits alongside other workloads on any modern GPU.
+
+### Model Recommendations
+
+| Role | Recommended Model | Source | Size | Notes |
+|---|---|---|---|---|
+| Embedding | granite-embedding-278m-multilingual-Q6_K | [bartowski/granite-embedding-278m-multilingual-GGUF](https://huggingface.co/bartowski/granite-embedding-278m-multilingual-GGUF) | 226MB | 768 dimensions. 512-token context (~1100 chars). Client-side truncation prevents 500 errors. |
+| LLM | **qmd-query-expansion-1.7B-q4_k_m** | [tobil/qmd-query-expansion-1.7B-gguf](https://huggingface.co/tobil/qmd-query-expansion-1.7B-gguf) | ~1.1GB | QMD's finetune — trained specifically for query expansion (hyde/lex/vec). Smaller and better than generic Qwen3-1.7B. |
+| LLM (alt) | Qwen3-1.7B-Q8_0 | [ggml-org/Qwen3-1.7B-Q8_0-GGUF](https://huggingface.co/ggml-org/Qwen3-1.7B-Q8_0-GGUF) | ~2.1GB | Generic base. Works but not optimized for expansion. |
+| Reranker | qwen3-reranker-0.6B-Q8_0 | [ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF](https://huggingface.co/ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF) | ~600MB | Cross-encoder architecture. Scores candidates against original query. |
+
+**Qwen3 /no_think flag:** Qwen3 uses thinking tokens by default. ClawMem appends `/no_think` to all prompts automatically for structured output.
+
+### Server Setup (all three use llama-server)
+
+```bash
+# Embedding (--embeddings flag required)
+llama-server -m granite-embedding-278m-multilingual-Q6_K.gguf \
+  --embeddings --port 8088 --host 0.0.0.0 --no-mmap -ngl 99 -c 2048 --batch-size 2048
+
+# LLM (QMD finetuned model recommended)
+llama-server -m qmd-query-expansion-1.7B-q4_k_m.gguf \
+  --port 8089 --host 0.0.0.0 -ngl 99 -c 4096 --batch-size 512
+
+# Reranker (--reranking flag required)
+llama-server -m Qwen3-Reranker-0.6B-Q8_0.gguf \
+  --port 8090 --host 0.0.0.0 -ngl 99 -c 2048 --batch-size 512 --reranking
+```
+
+### Verify Endpoints
+
+```bash
+# Embedding
+curl http://host:8088/v1/embeddings -d '{"input":"test","model":"embedding"}' -H 'Content-Type: application/json'
+
+# LLM
+curl http://host:8089/v1/models
+
+# Reranker
+curl http://host:8090/v1/models
+```
+
+## Environment Variable Reference
+
+| Variable | Default | Required | Effect |
+|---|---|---|---|
+| `CLAWMEM_EMBED_URL` | — | **Yes** | GPU embedding server. No local fallback exists. |
+| `CLAWMEM_LLM_URL` | — | Recommended | GPU LLM for intent classification, query expansion, A-MEM. Falls to local if unset + `NO_LOCAL_MODELS=false`. |
+| `CLAWMEM_RERANK_URL` | — | Recommended | GPU reranker for cross-encoder scoring. Falls to local if unset + `NO_LOCAL_MODELS=false`. |
+| `CLAWMEM_NO_LOCAL_MODELS` | `true` (via wrapper) | — | Blocks `node-llama-cpp` auto-downloads. Set `false` for local-only setups. |
+| `CLAWMEM_ENABLE_AMEM` | enabled | — | A-MEM note construction + link generation during indexing. |
+| `CLAWMEM_ENABLE_CONSOLIDATION` | disabled | — | Background worker backfills unenriched docs. Needs long-lived MCP process. |
+| `CLAWMEM_CONSOLIDATION_INTERVAL` | 300000 | — | Worker interval in ms (min 15000). |
+
+**Note:** The `bin/clawmem` wrapper script sets `CLAWMEM_EMBED_URL`, `CLAWMEM_LLM_URL`, `CLAWMEM_RERANK_URL`, and `CLAWMEM_NO_LOCAL_MODELS` with defaults. Always use the wrapper — never `bun run src/clawmem.ts` directly.
+
+## Quick Setup
+
+```bash
+git clone https://github.com/yoloshii/clawmem.git ~/clawmem
+cd ~/clawmem && bun install
+ln -sf ~/clawmem/bin/clawmem ~/.bun/bin/clawmem
+
+# Bootstrap a vault (init + index + embed + hooks + MCP)
+./bin/clawmem bootstrap ~/notes --name notes
+
+# Or step by step:
+./bin/clawmem init
+./bin/clawmem collection add ~/notes --name notes
+./bin/clawmem update --embed
+./bin/clawmem setup hooks
+./bin/clawmem setup mcp
+
+# Verify
+./bin/clawmem doctor    # Full health check
+./bin/clawmem status    # Quick index status
+```
+
+---
 
 ## Memory Retrieval (90/10 Rule)
 
@@ -70,29 +185,6 @@ All other retrieval is handled by Tier 2 hooks. Do NOT call MCP tools speculativ
 - Do NOT call `query` or `intent_search` every turn — three rules above are the only gates.
 - Do NOT re-search what's already in `<vault-context>`.
 - Do NOT run `status` routinely. Only when retrieval feels broken or after large ingestion.
-
-## Operational Issue Tracking
-
-When encountering tool failures, instruction contradictions, retrieval gaps, or workflow friction that would benefit from a fix:
-
-Write to `docs/issues/YYYY-MM-DD-<slug>.md` with: category, severity, what happened, what was expected, context, suggested fix.
-
-**File structure:**
-```
-# <title>
-- Category: tool-failure | instruction-gap | workflow-friction | retrieval-gap | inconsistency
-- Severity: critical | high | medium
-- Status: open | resolved
-
-## Observed
-## Expected
-## Context
-## Suggested Fix
-```
-
-**Triggers:** repeated tool error, instruction that contradicts observed behavior, retrieval consistently missing known content, workflow requiring unnecessary steps.
-
-**Do NOT log:** one-off transient errors, user-caused issues, issues already recorded.
 
 ## Tool Selection (one-liner)
 
@@ -212,6 +304,53 @@ User Query → Intent Classification (WHY/WHEN/ENTITY/WHAT)
 | `collection` filter | Yes | No |
 | Best for | Most queries, progressive disclosure | Causal chains spanning multiple docs |
 
+## Operational Issue Tracking
+
+When encountering tool failures, instruction contradictions, retrieval gaps, or workflow friction that would benefit from a fix:
+
+Write to `docs/issues/YYYY-MM-DD-<slug>.md` with: category, severity, what happened, what was expected, context, suggested fix.
+
+**File structure:**
+```
+# <title>
+- Category: tool-failure | instruction-gap | workflow-friction | retrieval-gap | inconsistency
+- Severity: critical | high | medium
+- Status: open | resolved
+
+## Observed
+## Expected
+## Context
+## Suggested Fix
+```
+
+**Triggers:** repeated tool error, instruction that contradicts observed behavior, retrieval consistently missing known content, workflow requiring unnecessary steps.
+
+**Do NOT log:** one-off transient errors, user-caused issues, issues already recorded.
+
+## Troubleshooting
+
+```
+Symptom: "Local model download blocked" error
+  → GPU endpoint unreachable while CLAWMEM_NO_LOCAL_MODELS=true.
+  → Fix: Check GPU server is running. Or set CLAWMEM_NO_LOCAL_MODELS=false for local fallback.
+
+Symptom: Query expansion always fails / returns garbage
+  → CPU inference with Qwen3-1.7B is unreliable (~100% failure rate).
+  → Fix: Set up a GPU server. Even a low-end NVIDIA GPU handles 1.7B models.
+
+Symptom: Vector search returns no results but BM25 works
+  → Missing embeddings. Watcher indexes but does NOT embed.
+  → Fix: Run `clawmem embed` or wait for daily embed timer (04:00 UTC).
+
+Symptom: context-surfacing hook returns empty
+  → Prompt too short (<20 chars), starts with `/`, or no docs score above threshold.
+  → Fix: Check `clawmem status` for doc counts. Check `clawmem embed` for embedding coverage.
+
+Symptom: intent_search returns weak results for WHY/ENTITY
+  → Graph may be sparse (few A-MEM edges).
+  → Fix: Run `build_graphs` to add temporal backbone + semantic edges.
+```
+
 ## CLI Reference
 
 Run `clawmem --help` for full command listing. Use this before guessing at commands or parameters.
@@ -220,7 +359,8 @@ Run `clawmem --help` for full command listing. Use this before guessing at comma
 
 - QMD retrieval (BM25, vector, RRF, rerank, query expansion) is forked into ClawMem. Do not call standalone QMD tools.
 - SAME (composite scoring), MAGMA (intent + graph), A-MEM (self-evolving notes) layer on top of QMD substrate.
-- GPU services required: embedding server, LLM server, reranker server. Set via `CLAWMEM_EMBED_URL`, `CLAWMEM_LLM_URL`, `CLAWMEM_RERANK_URL` environment variables.
+- GPU services: embedding (required), LLM (recommended), reranker (recommended). Set via `CLAWMEM_EMBED_URL`, `CLAWMEM_LLM_URL`, `CLAWMEM_RERANK_URL`.
+- `CLAWMEM_NO_LOCAL_MODELS=true` (default via wrapper) prevents surprise multi-GB downloads. Operations fail fast if GPU endpoint is unreachable.
 - Consolidation worker (`CLAWMEM_ENABLE_CONSOLIDATION=true`) backfills unenriched docs with A-MEM notes + links. Only runs if the MCP process stays alive long enough to tick (every 5min). Not reliable in stateless `--print` per-request mode.
 - Stop hooks (`decision-extractor`, `handoff-generator`, `feedback-loop`) are unreliable under `--print` mode. IO3 (`postrun.go`) fills the gap by invoking these hooks post-response with synthetic transcripts.
 - Beads integration: `syncBeadsIssues()` creates markdown docs in `beads` collection, maps dependency edges (`blocks`→causal, `discovered-from`→supporting, `relates-to`→semantic) into `memory_relations`, and triggers A-MEM enrichment for new docs. Watcher auto-triggers on `.beads/beads.jsonl` changes; `beads_sync` MCP tool for manual sync.
