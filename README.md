@@ -110,18 +110,32 @@ ClawMem offloads all neural inference to remote GPU servers running `llama-serve
 
 All three run on any machine with a GPU. They communicate via HTTP (OpenAI-compatible `/v1/` endpoints) and can be colocated or distributed.
 
+#### GPU Mode (recommended)
+
+Point all three env vars at your GPU server. The `bin/clawmem` wrapper script sets `CLAWMEM_NO_LOCAL_MODELS=true` by default, which prevents `node-llama-cpp` from auto-downloading multi-GB model files to the host.
+
 ```bash
 export CLAWMEM_EMBED_URL=http://your-gpu-server:8088
 export CLAWMEM_LLM_URL=http://your-gpu-server:8089
 export CLAWMEM_RERANK_URL=http://your-gpu-server:8090
 ```
 
-**Fallback behavior:**
-- Without `CLAWMEM_EMBED_URL`: embedding fails (required for vector search, indexing, context-surfacing)
-- Without `CLAWMEM_LLM_URL`: falls back to local `node-llama-cpp` on CPU — auto-downloads ~2.1GB model to `~/.cache/qmd/models/`. CPU inference is unreliable for Qwen3-1.7B (truncated output, ~100% failure rate). The heuristic intent classifier still works without the LLM.
-- Without `CLAWMEM_RERANK_URL`: falls back to local `node-llama-cpp` on CPU — auto-downloads ~600MB model. Functional but significantly slower.
+If a GPU endpoint is unreachable, the operation fails fast instead of silently downloading a local model. This is intentional — if your GPU servers are the source of truth, you want errors, not surprise 2GB downloads.
 
 **Total VRAM:** ~4.5GB for all three services. Fits comfortably on any modern GPU alongside other workloads.
+
+#### Local Mode (no GPU)
+
+For local-only setups without a GPU server, unset the endpoint vars and disable the download guard:
+
+```bash
+unset CLAWMEM_EMBED_URL CLAWMEM_LLM_URL CLAWMEM_RERANK_URL
+export CLAWMEM_NO_LOCAL_MODELS=false
+```
+
+`node-llama-cpp` will auto-download GGUF models from HuggingFace to `~/.cache/qmd/models/` on first use (~1.1GB LLM + ~600MB reranker). CPU inference is functional but significantly slower and less reliable (Qwen3-1.7B on CPU has ~100% failure rate for query expansion). The heuristic intent classifier still works without the LLM.
+
+**Note:** `CLAWMEM_EMBED_URL` has no local fallback — embedding requires a server.
 
 ### Embedding Server (Required)
 
@@ -168,7 +182,7 @@ Intent classification, query expansion, and A-MEM extraction use a remote LLM se
 | **qmd-query-expansion-1.7B-q4_k_m** (recommended) | [tobil/qmd-query-expansion-1.7B-gguf](https://huggingface.co/tobil/qmd-query-expansion-1.7B-gguf) | ~1.1GB | QMD's finetune — trained specifically for query expansion. Better expansion quality, smaller quantization. |
 | Qwen3-1.7B-Q8_0 | [ggml-org/Qwen3-1.7B-Q8_0-GGUF](https://huggingface.co/ggml-org/Qwen3-1.7B-Q8_0-GGUF) | ~2.1GB | Generic base model. Works but not optimized for expansion. |
 
-The finetuned model downloads automatically through `node-llama-cpp` if you set the local fallback model URI (see Configuration below), or you can serve it directly via `llama-server`.
+Serve via `llama-server` on your GPU host. In local mode (`CLAWMEM_NO_LOCAL_MODELS=false`), `node-llama-cpp` auto-downloads the model configured in `src/llm.ts:DEFAULT_GENERATE_MODEL`.
 
 **Performance (RTX 3090):**
 - Intent classification: **27ms**
@@ -193,12 +207,7 @@ llama-server -m qmd-query-expansion-1.7B-q4_k_m.gguf \
   -ngl 99 -c 4096 --batch-size 512
 ```
 
-**Local fallback model:** When `CLAWMEM_LLM_URL` is not set, `node-llama-cpp` auto-downloads from HuggingFace. To use the finetuned model locally, update the `DEFAULT_GENERATE_MODEL` constant in `src/llm.ts`:
-
-```typescript
-// QMD's finetuned query expansion model (recommended)
-const DEFAULT_GENERATE_MODEL = "hf:tobil/qmd-query-expansion-1.7B-gguf/qmd-query-expansion-1.7B-q4_k_m.gguf";
-```
+**Local fallback:** Only used when `CLAWMEM_LLM_URL` is unset AND `CLAWMEM_NO_LOCAL_MODELS=false`. The model URI is configured in `src/llm.ts:DEFAULT_GENERATE_MODEL` (currently points to the QMD finetune).
 
 ### Reranker Server (Recommended)
 
@@ -224,7 +233,7 @@ export CLAWMEM_RERANK_URL=http://your-gpu-server:8090
 - Scores each candidate against the original query (cross-encoder architecture)
 - `query` pipeline: 4000 char context per doc (deep reranking); `intent_search`: 200 char context per doc (fast reranking)
 
-Without `CLAWMEM_RERANK_URL`, falls back to local `node-llama-cpp` on CPU (auto-downloads ~600MB model). Functional but significantly slower.
+**Local fallback:** Only used when `CLAWMEM_RERANK_URL` is unset AND `CLAWMEM_NO_LOCAL_MODELS=false`. Auto-downloads ~600MB model via `node-llama-cpp`. Functional but significantly slower on CPU.
 
 **Server setup:**
 
@@ -461,6 +470,7 @@ Notes referenced by the agent during a session get boosted (`access_count++`). U
 | `CLAWMEM_EMBED_URL` | **required** | GPU embedding server URL (e.g. `http://host:8088`) |
 | `CLAWMEM_LLM_URL` | recommended | GPU LLM server URL for intent/query/A-MEM (e.g. `http://host:8089`) |
 | `CLAWMEM_RERANK_URL` | recommended | GPU reranker server URL (e.g. `http://host:8090`) |
+| `CLAWMEM_NO_LOCAL_MODELS` | `true` | Block `node-llama-cpp` from auto-downloading GGUF models. Set `false` for local-only setups without GPU. |
 
 ## Configuration
 
