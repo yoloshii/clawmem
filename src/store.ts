@@ -60,7 +60,7 @@ import {
 const HOME = Bun.env.HOME || "/tmp";
 export const DEFAULT_EMBED_MODEL = "granite";
 export const DEFAULT_RERANK_MODEL = "ExpedientFalcon/qwen3-reranker:0.6b-q8_0";
-export const DEFAULT_QUERY_MODEL = "Qwen/Qwen3-1.7B";
+export const DEFAULT_QUERY_MODEL = "tobil/qmd-query-expansion-1.7B";
 export const DEFAULT_GLOB = "**/*.md";
 export const DEFAULT_MULTI_GET_MAX_BYTES = 10 * 1024; // 10KB
 
