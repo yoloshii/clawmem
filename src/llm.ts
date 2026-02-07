@@ -372,9 +372,13 @@ export class LlamaCpp implements LLM {
   }
 
   /**
-   * Resolve a model URI to a local path, downloading if needed
+   * Resolve a model URI to a local path, downloading if needed.
+   * Set CLAWMEM_NO_LOCAL_MODELS=true to prevent auto-downloads (GPU-only mode).
    */
   private async resolveModel(modelUri: string): Promise<string> {
+    if (process.env.CLAWMEM_NO_LOCAL_MODELS === "true") {
+      throw new Error(`Local model download blocked (CLAWMEM_NO_LOCAL_MODELS=true). Model: ${modelUri}. Set CLAWMEM_LLM_URL / CLAWMEM_RERANK_URL to use GPU endpoints.`);
+    }
     this.ensureModelCacheDir();
     const { resolveModelFile } = await getNodeLlamaCpp();
     return await resolveModelFile(modelUri, this.modelCacheDir);
