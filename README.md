@@ -124,14 +124,13 @@ For remote setups, set `CLAWMEM_NO_LOCAL_MODELS=true` to prevent `node-llama-cpp
 
 #### CPU-Only Mode (no GPU)
 
-Without a GPU, unset the endpoint vars and allow local model downloads:
+Without a GPU, unset the endpoint vars:
 
 ```bash
 unset CLAWMEM_EMBED_URL CLAWMEM_LLM_URL CLAWMEM_RERANK_URL
-export CLAWMEM_NO_LOCAL_MODELS=false
 ```
 
-`node-llama-cpp` will auto-download GGUF models on first use (~1.1GB LLM + ~600MB reranker). CPU inference is functional but significantly slower — GPU inference is orders of magnitude faster for query expansion and reranking. The heuristic intent classifier still works without the LLM.
+`node-llama-cpp` will auto-download GGUF models on first use (~1.1GB LLM + ~600MB reranker). CPU inference works but is much slower — GPU is strongly recommended for responsive query expansion and reranking.
 
 **Note:** Embedding requires a running `llama-server --embeddings` instance (local or remote) — there is no in-process fallback for embedding.
 
@@ -173,7 +172,7 @@ To embed your vault:
 
 Intent classification, query expansion, and A-MEM extraction use [qmd-query-expansion-1.7B](https://huggingface.co/tobil/qmd-query-expansion-1.7B-gguf) — a Qwen3-1.7B finetuned by QMD specifically for generating search expansion terms (hyde, lexical, and vector variants). ~1.1GB at q4_k_m quantization, served via `llama-server` on port 8089.
 
-**Without a server:** If `CLAWMEM_LLM_URL` is unset, `node-llama-cpp` auto-downloads the model on first use. CPU inference works but is significantly slower than GPU — running `llama-server` on even a modest GPU is strongly recommended for responsive query expansion.
+**Without a server:** If `CLAWMEM_LLM_URL` is unset, `node-llama-cpp` auto-downloads the model on first use.
 
 **Performance (RTX 3090):**
 - Intent classification: **27ms**
@@ -189,7 +188,7 @@ Intent classification, query expansion, and A-MEM extraction use [qmd-query-expa
 **Server setup:**
 
 ```bash
-# Download the finetuned model (recommended)
+# Download the finetuned model
 wget https://huggingface.co/tobil/qmd-query-expansion-1.7B-gguf/resolve/main/qmd-query-expansion-1.7B-q4_k_m.gguf
 
 # Start llama-server for LLM inference
@@ -197,8 +196,6 @@ llama-server -m qmd-query-expansion-1.7B-q4_k_m.gguf \
   --port 8089 --host 0.0.0.0 \
   -ngl 99 -c 4096 --batch-size 512
 ```
-
-**Local fallback:** Only used when `CLAWMEM_LLM_URL` is unset AND `CLAWMEM_NO_LOCAL_MODELS=false`. The model URI is configured in `src/llm.ts:DEFAULT_GENERATE_MODEL` (currently points to the QMD finetune).
 
 ### Reranker Server
 
@@ -209,7 +206,7 @@ Cross-encoder reranking for `query` and `intent_search` pipelines using [qwen3-r
 - Scores each candidate against the original query (cross-encoder architecture)
 - `query` pipeline: 4000 char context per doc (deep reranking); `intent_search`: 200 char context per doc (fast reranking)
 
-**Without a server:** If `CLAWMEM_RERANK_URL` is unset, `node-llama-cpp` auto-downloads the model (~600MB) on first use. CPU inference works but is significantly slower than GPU.
+**Without a server:** If `CLAWMEM_RERANK_URL` is unset, `node-llama-cpp` auto-downloads the model (~600MB) on first use.
 
 **Server setup:**
 

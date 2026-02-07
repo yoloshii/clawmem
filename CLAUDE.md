@@ -104,9 +104,9 @@ ClawMem hooks handle ~90% of retrieval automatically. Agent-initiated MCP calls 
 | `session-bootstrap` | SessionStart | 2000 tokens | profile + latest handoff + recent decisions + stale notes |
 | `context-surfacing` | UserPromptSubmit | 800 tokens | hybrid search → `<vault-context>` injection |
 | `staleness-check` | SessionStart | 250 tokens | flags notes not modified in 30+ days |
-| `decision-extractor` | Stop / IO3 post-response | — | LLM extracts observations → `_clawmem/observations/`, infers causal links |
-| `handoff-generator` | Stop / IO3 post-response | — | LLM summarizes session → `_clawmem/handoffs/` |
-| `feedback-loop` | Stop / IO3 post-response | — | tracks referenced notes → boosts confidence |
+| `decision-extractor` | Stop | — | LLM extracts observations → `_clawmem/observations/`, infers causal links |
+| `handoff-generator` | Stop | — | LLM summarizes session → `_clawmem/handoffs/` |
+| `feedback-loop` | Stop | — | tracks referenced notes → boosts confidence |
 
 **Default behavior:** Read injected `<vault-context>` first. If sufficient, answer immediately.
 
@@ -208,7 +208,7 @@ compositeScore = 0.10 × searchScore + 0.70 × recencyScore + 0.20 × confidence
 
 **Infrastructure (Tier 1, no agent action needed):**
 - **`clawmem-watcher`** — keeps index + A-MEM fresh (continuous, on `.md` change). Also watches `.jsonl` — routes `.beads/beads.jsonl` changes to `syncBeadsIssues()` (auto-bridges deps into `memory_relations`). Does NOT embed.
-- **`clawmem-embed` timer** — keeps embeddings fresh (daily 04:00 UTC). Idempotent, skips already-embedded fragments.
+- **`clawmem-embed` timer** — keeps embeddings fresh (daily). Idempotent, skips already-embedded fragments.
 
 **Impact of missing embeddings:** `vsearch`, `query` (vector component), `context-surfacing` (vector component), and `generateMemoryLinks()` (neighbor discovery) all depend on embeddings. If embeddings are missing, these degrade silently — BM25 still works, but vector recall and inter-doc link quality suffer.
 
@@ -339,6 +339,5 @@ Run `clawmem --help` for full command listing. Use this before guessing at comma
 - SAME (composite scoring), MAGMA (intent + graph), A-MEM (self-evolving notes) layer on top of QMD substrate.
 - Three `llama-server` instances (embedding, LLM, reranker) on local or remote GPU. Wrapper defaults to `localhost:8088/8089/8090`.
 - `CLAWMEM_NO_LOCAL_MODELS=false` (default) allows in-process LLM/reranker fallback via `node-llama-cpp`. Set `true` for remote-only setups to fail fast on unreachable endpoints.
-- Consolidation worker (`CLAWMEM_ENABLE_CONSOLIDATION=true`) backfills unenriched docs with A-MEM notes + links. Only runs if the MCP process stays alive long enough to tick (every 5min). Not reliable in stateless `--print` per-request mode.
-- Stop hooks (`decision-extractor`, `handoff-generator`, `feedback-loop`) are unreliable under `--print` mode. IO3 (`postrun.go`) fills the gap by invoking these hooks post-response with synthetic transcripts.
+- Consolidation worker (`CLAWMEM_ENABLE_CONSOLIDATION=true`) backfills unenriched docs with A-MEM notes + links. Only runs if the MCP process stays alive long enough to tick (every 5min).
 - Beads integration: `syncBeadsIssues()` creates markdown docs in `beads` collection, maps dependency edges (`blocks`→causal, `discovered-from`→supporting, `relates-to`→semantic) into `memory_relations`, and triggers A-MEM enrichment for new docs. Watcher auto-triggers on `.beads/beads.jsonl` changes; `beads_sync` MCP tool for manual sync.
