@@ -220,6 +220,35 @@ llama-server -m Qwen3-Reranker-0.6B-Q8_0.gguf \
   -ngl 99 -c 2048 --batch-size 512 --reranking
 ```
 
+### MCP Server
+
+ClawMem exposes 18 tools via the [Model Context Protocol](https://modelcontextprotocol.io). Any MCP-compatible client can use it.
+
+**Claude Code (automatic):**
+
+```bash
+./bin/clawmem setup mcp   # Registers in ~/.claude.json
+```
+
+**Manual (any MCP client):**
+
+Add to your MCP config (e.g. `~/.claude.json`, `claude_desktop_config.json`, or your client's equivalent):
+
+```json
+{
+  "mcpServers": {
+    "clawmem": {
+      "command": "/absolute/path/to/clawmem/bin/clawmem",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+The server runs via stdio — no network port needed. The `bin/clawmem` wrapper sets the GPU endpoint env vars automatically.
+
+**Verify:** After registering, your client should see 18 tools including `search`, `vsearch`, `query`, `intent_search`, etc.
+
 ### Verify Installation
 
 ```bash
@@ -262,9 +291,9 @@ clawmem doctor                                  Full health check
 clawmem status                                  Quick index status
 ```
 
-## MCP Tools (19)
+## MCP Tools (18)
 
-Registered by `clawmem setup mcp`. Available to any MCP-compatible agent.
+Registered by `clawmem setup mcp`. Available to any MCP-compatible client.
 
 | Tool | Description |
 |---|---|
@@ -313,7 +342,6 @@ Registered by `clawmem setup mcp`. Available to any MCP-compatible agent.
 | `index_stats` | Detailed stats: types, staleness, access counts, sessions |
 | `session_log` | Recent sessions with handoff info |
 | `profile` | Current static + dynamic user profile |
-| `update_context` | Regenerate per-folder CLAUDE.md files |
 
 ### Compact Mode
 
