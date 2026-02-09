@@ -20,6 +20,13 @@ export type HookInput = {
 };
 
 export type HookOutput = {
+  continue?: boolean;
+  suppressOutput?: boolean;
+  stopReason?: string;
+  decision?: "approve" | "block";
+  reason?: string;
+  systemMessage?: string;
+  permissionDecision?: "allow" | "deny" | "ask";
   hookSpecificOutput: {
     hookEventName?: string;
     additionalContext?: string;
@@ -69,6 +76,8 @@ export function makeContextOutput(
   context: string
 ): HookOutput {
   return {
+    continue: true,
+    suppressOutput: false,
     hookSpecificOutput: {
       hookEventName,
       additionalContext: context,
@@ -81,6 +90,8 @@ export function makeContextOutput(
  */
 export function makeEmptyOutput(hookEventName?: string): HookOutput {
   return {
+    continue: true,
+    suppressOutput: false,
     hookSpecificOutput: {
       ...(hookEventName && { hookEventName }),
     },
