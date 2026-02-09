@@ -98,6 +98,56 @@ One command to set up a vault:
 ./bin/clawmem setup mcp
 ```
 
+### OpenClaw Integration: Memory System Configuration
+
+When using ClawMem with OpenClaw, you have two options:
+
+#### Option 1: ClawMem Exclusive (Recommended)
+
+Use ClawMem hooks + MCP for **100% of memory operations** with zero redundancy. This approach:
+- Avoids 10-15% context window waste from duplicate context injection
+- Prevents OpenClaw's native memory from auto-initializing on updates
+- Keeps all memory operations in ClawMem's hybrid search + graph traversal system
+
+**To disable OpenClaw's native memory initialization:**
+
+```bash
+# Set extraPaths to empty array
+openclaw config set agents.defaults.memorySearch.extraPaths "[]"
+
+# Verify configuration
+openclaw config get agents.defaults.memorySearch
+# Expected output: {"extraPaths": []}
+
+# Verify no native memory index exists
+ls ~/.openclaw/agents/main/memory/
+# Expected: "No such file or directory"
+```
+
+**Memory distribution with this setup:**
+- **ClawMem Tier 2 (90%):** Automatic hooks inject context on every prompt
+  - `session-bootstrap` - Profile, latest handoff, recent decisions
+  - `context-surfacing` - Hybrid search results (800 token budget)
+  - `staleness-check` - Flags stale notes (30+ days)
+  - `decision-extractor`, `handoff-generator`, `feedback-loop` - Capture session state
+- **ClawMem Tier 3 (10%):** Agent-initiated MCP tools (`query`, `intent_search`, etc.)
+
+#### Option 2: Hybrid (ClawMem + Native)
+
+Keep both systems active for redundancy or experimentation:
+
+```bash
+# Add paths for OpenClaw's native memory to index
+openclaw config set agents.defaults.memorySearch.extraPaths '["~/documents", "~/notes"]'
+```
+
+**Tradeoffs:**
+- ✅ Redundant recall (two independent memory systems)
+- ❌ 10-15% context window waste (duplicate facts injected)
+- ❌ Higher maintenance (two memory indices to keep fresh)
+
+**Most users should choose Option 1** (ClawMem exclusive) unless they have a specific need for redundant memory systems.
+
 ### GPU Services
 
 ClawMem uses three lightweight `llama-server` (llama.cpp) instances for neural inference. Run them on your local GPU — total VRAM is ~4.5GB, fitting comfortably alongside other workloads on any modern NVIDIA card.
