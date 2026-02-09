@@ -93,6 +93,55 @@ ln -sf ~/clawmem/bin/clawmem ~/.bun/bin/clawmem
 
 ---
 
+## OpenClaw Integration: Memory System Configuration
+
+When using ClawMem with OpenClaw, choose one of two deployment options:
+
+### Option 1: ClawMem Exclusive (Recommended)
+
+ClawMem handles 100% of memory operations via hooks + MCP tools. Zero redundancy.
+
+**Benefits:**
+- No context window waste (avoids 10-15% duplicate injection)
+- Prevents OpenClaw native memory auto-initialization on updates
+- All memory in ClawMem's hybrid search + graph traversal system
+
+**Configuration:**
+```bash
+# Disable OpenClaw's native memory
+openclaw config set agents.defaults.memorySearch.extraPaths "[]"
+
+# Verify
+openclaw config get agents.defaults.memorySearch
+# Expected: {"extraPaths": []}
+
+# Confirm no native memory index exists
+ls ~/.openclaw/agents/main/memory/
+# Expected: "No such file or directory"
+```
+
+**Memory distribution:**
+- **Tier 2 (90%):** Hooks auto-inject context (session-bootstrap, context-surfacing, staleness-check, decision-extractor, handoff-generator, feedback-loop)
+- **Tier 3 (10%):** Agent-initiated MCP tools (query, intent_search, find_causal_links, etc.)
+
+### Option 2: Hybrid (ClawMem + Native)
+
+Run both ClawMem and OpenClaw's native memory for redundancy.
+
+**Configuration:**
+```bash
+openclaw config set agents.defaults.memorySearch.extraPaths '["~/documents", "~/notes"]'
+```
+
+**Tradeoffs:**
+- ✅ Redundant recall from two independent systems
+- ❌ 10-15% context window waste from duplicate facts
+- ❌ Two memory indices to maintain
+
+**Recommendation:** Use Option 1 unless you have a specific need for redundant memory systems.
+
+---
+
 ## Memory Retrieval (90/10 Rule)
 
 ClawMem hooks handle ~90% of retrieval automatically. Agent-initiated MCP calls cover the remaining ~10%.
