@@ -859,7 +859,8 @@ function findClawmemBinary(): string {
 
 async function cmdWatch() {
   const { startWatcher } = await import("./watcher.ts");
-  const collections = collectionsList();
+  const collections = collectionsList()
+    .sort((a, b) => b.path.length - a.path.length); // Most specific path first for prefix matching
 
   if (collections.length === 0) {
     die("No collections configured. Add one first: clawmem collection add <path> --name <name>");

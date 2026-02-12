@@ -67,7 +67,7 @@ curl http://host:8090/v1/models
 | `CLAWMEM_ENABLE_CONSOLIDATION` | disabled | Background worker backfills unenriched docs. Needs long-lived MCP process. |
 | `CLAWMEM_CONSOLIDATION_INTERVAL` | 300000 | Worker interval in ms (min 15000). |
 
-**Note:** The `bin/clawmem` wrapper sets all endpoint defaults and `CLAWMEM_NO_LOCAL_MODELS`. Always use the wrapper — never `bun run src/clawmem.ts` directly.
+**Note:** The `bin/clawmem` wrapper sets all endpoint defaults (`CLAWMEM_EMBED_URL`, `CLAWMEM_LLM_URL`, `CLAWMEM_RERANK_URL` pointing to VM 200) and `CLAWMEM_NO_LOCAL_MODELS=true`. Always use the wrapper — never `bun run src/clawmem.ts` directly. The systemd watcher service has the same env vars via its `10-gpu-env.conf` drop-in.
 
 ## Quick Setup
 
@@ -241,7 +241,7 @@ compositeScore = 0.10 × searchScore + 0.70 × recencyScore + 0.20 × confidence
 
 ## Indexing & Graph Building
 
-### What Gets Indexed (per collection in config.yaml)
+### What Gets Indexed (per collection in config.yaml, symlinked as index.yml)
 
 - `**/MEMORY.md` — any depth
 - `**/memory/**/*.md`, `**/memory/**/*.txt` — session logs
@@ -376,6 +376,22 @@ Symptom: context-surfacing hook returns empty
 Symptom: intent_search returns weak results for WHY/ENTITY
   → Graph may be sparse (few A-MEM edges).
   → Fix: Run `build_graphs` to add temporal backbone + semantic edges.
+
+Symptom: Watcher logs events but collections show 0 docs after update/reindex
+  → Bun.Glob does not support brace expansion {a,b,c}. Collection patterns returned 0 files.
+  → Fixed 2026-02-12: indexer.ts splits brace patterns into individual Glob scans.
+
+Symptom: Watcher fires events but wrong collection processes them (e.g., workspace instead of dharma-propagation)
+  → Collection prefix matching via Array.find() returns first match. Parent paths match before children.
+  → Fixed 2026-02-12: cmdWatch() sorts collections by path length descending (most specific first).
+
+Symptom: reindex --force crashes with "UNIQUE constraint failed: documents.collection, documents.path"
+  → Force deactivates rows (active=0) but UNIQUE(collection, path) doesn't discriminate by active flag.
+  → Fixed 2026-02-12: indexer.ts checks for inactive rows and reactivates instead of inserting.
+
+Symptom: CLI reindex/update falls back to node-llama-cpp Vulkan (not GPU server)
+  → GPU env vars only in systemd drop-in, not in wrapper script. CLI invocations missed them.
+  → Fixed 2026-02-12: bin/clawmem wrapper exports CLAWMEM_EMBED_URL/LLM_URL/RERANK_URL defaults.
 ```
 
 ## CLI Reference
